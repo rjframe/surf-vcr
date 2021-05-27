@@ -7,7 +7,7 @@ use std::{
 use serde::{Serialize, Deserialize};
 
 use surf::{
-    http::{Method, Version},
+    http::{self, Method, Version},
     middleware::{Middleware, Next},
     Client,
     Request, Response,
@@ -36,14 +36,14 @@ pub struct VcrMiddleware {
 
 #[surf::utils::async_trait]
 impl Middleware for VcrMiddleware {
-    async fn handle(&self, req: Request, client: Client, next: Next<'_>)
+    async fn handle(&self, mut req: Request, client: Client, next: Next<'_>)
     -> surf::Result<Response> {
-        let request = VcrRequest::from(&req);
+        let request = VcrRequest::from_request(&mut req).await?;
 
         let res = match self.mode {
             VcrMode::Record => {
-                let res = next.run(req, client).await?;
-                let response = VcrResponse::from(&res);
+                let mut res = next.run(req, client).await?;
+                let response = VcrResponse::try_from_response(&mut res).await?;
                 // TODO: Append (request, response) to file.
                 res
             },
@@ -86,9 +86,32 @@ pub struct VcrRequest {
     body: Vec<u8>,
 }
 
-impl From<&Request> for VcrRequest {
-    fn from(req: &Request) -> VcrRequest {
-        todo!()
+impl VcrRequest {
+    pub async fn from_request(req: &mut Request) -> surf::Result<VcrRequest> {
+        let headers = {
+            let mut headers = HashMap::new();
+
+            for hdr in req.header_names() {
+                let values = req.header(hdr).iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<String>>();
+
+                headers.insert(hdr.to_string(), values);
+            }
+
+            headers
+        };
+
+        let body = req.take_body().into_bytes().await?;
+        // We have to replace the body in our source after the copy.
+        req.set_body(body.as_slice());
+
+        Ok(Self {
+            method: req.method(),
+            url: req.url().to_owned(),
+            headers,
+            body,
+        })
     }
 }
 
@@ -102,14 +125,51 @@ pub struct VcrResponse {
     body: Vec<u8>,
 }
 
-impl From<&Response> for VcrResponse {
-    fn from(resp: &Response) -> VcrResponse {
-        todo!()
+impl VcrResponse {
+    pub async fn try_from_response(resp: &mut Response)
+    -> surf::Result<VcrResponse> {
+        let headers = {
+            let mut headers = HashMap::new();
+
+            for hdr in resp.header_names() {
+                let values = resp.header(hdr).iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<String>>();
+
+                headers.insert(hdr.to_string(), values);
+            }
+
+            headers
+        };
+
+        let body = resp.body_bytes().await?;
+        // We have to replace the body in our source after the copy.
+        resp.set_body(body.as_slice());
+
+        Ok(Self {
+            status: resp.status(),
+            version: resp.version(),
+            headers,
+            body,
+        })
     }
 }
 
 impl From<&VcrResponse> for Response {
     fn from(resp: &VcrResponse) -> Response {
-        todo!()
+        let mut response = http::Response::new(resp.status);
+        response.set_version(resp.version);
+
+        for name in resp.headers.keys() {
+            let values = &resp.headers[name];
+
+            for value in values.iter() {
+                response.append_header(name.as_str(), value);
+            }
+        }
+
+        response.set_body(resp.body.as_slice());
+
+        Response::from(response)
     }
 }
