@@ -1,6 +1,12 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
+    fmt,
+    io,
+};
+
+use async_std::{
+    prelude::*,
     fs,
 };
 
@@ -44,12 +50,30 @@ impl Middleware for VcrMiddleware {
             VcrMode::Record => {
                 let mut res = next.run(req, client).await?;
                 let response = VcrResponse::try_from_response(&mut res).await?;
-                // TODO: Append (request, response) to file.
+
+                let mut file = fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&self.file).await?;
+
+                let doc = serde_yaml::to_string(&(request, response))?;
+
+                // Each record is a new YAML document.
+                file.write_all(b"---\n").await?;
+                file.write_all(doc.as_bytes()).await?;
+                file.write_all(b"\n").await?;
+
                 res
             },
             VcrMode::Replay => {
-                // TODO: look up response, return it.
-                todo!()
+                let pos = self.requests.iter().position(|x| x == &request);
+
+                if pos.is_none() {
+                    // Return error? panic?
+                    todo!()
+                }
+
+                Response::from(&self.responses[pos.unwrap()])
             }
         };
 
@@ -58,17 +82,25 @@ impl Middleware for VcrMiddleware {
 }
 
 impl VcrMiddleware {
-    pub fn new<P>(mode: VcrMode, recording: P) -> Self
+    pub async fn new<P>(mode: VcrMode, recording: P) -> Result<Self, VcrError>
         where P: Into<PathBuf>,
     {
+        let recording = recording.into();
         let mut requests = vec![];
         let mut responses = vec![];
 
         if mode == VcrMode::Replay {
-            // TODO: Open the file, read each YAML document.
+            // TODO: Read in chunks.
+            let replays = fs::read_to_string(&recording).await?;
+
+            for replay in replays.split("\n---\n") {
+                let (request, response) = serde_yaml::from_str(replay)?;
+                requests.push(request);
+                responses.push(response);
+            }
         }
 
-        Self { mode, file: recording.into(), requests, responses }
+        Ok(Self { mode, file: recording, requests, responses })
     }
 }
 
@@ -172,4 +204,29 @@ impl From<&VcrResponse> for Response {
 
         Response::from(response)
     }
+}
+
+#[derive(Debug)]
+pub enum VcrError {
+    File(io::Error),
+    Parse(serde_yaml::Error),
+}
+
+impl std::error::Error for VcrError {}
+
+impl fmt::Display for VcrError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::File(e) => e.fmt(f),
+            Self::Parse(e) => e.fmt(f),
+        }
+    }
+}
+
+impl From<io::Error> for VcrError {
+    fn from(e: io::Error) -> Self { Self::File(e) }
+}
+
+impl From<serde_yaml::Error> for VcrError {
+    fn from(e: serde_yaml::Error) -> Self { Self::Parse(e) }
 }
