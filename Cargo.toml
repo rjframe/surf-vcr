@@ -1,0 +1,12 @@
+[package]
+name = "surf-vcr"
+version = "0.1.0"
+edition = "2018"
+
+[dependencies]
+# TODO: Determine what version range we can support.
+surf = "2.2"
+
+async-std = { version = "1.9", default-features = false, features = ["std"] }
+serde = "1.0"
+serde_yaml = "0.8"
