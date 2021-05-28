@@ -117,6 +117,24 @@ impl VcrMiddleware {
     }
 }
 
+// If the body is a valid string, it's much nicer to serialize to it; otherwise
+// we serialize to bytes.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
+enum Body {
+    Bytes(Vec<u8>),
+    Str(String),
+}
+
+impl From<&[u8]> for Body {
+    fn from(bytes: &[u8]) -> Self {
+        match std::str::from_utf8(&bytes) {
+            Ok(s) => Body::Str(s.to_owned()),
+            Err(_) => Body::Bytes(bytes.to_vec()),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum VcrMode {
     Record,
@@ -128,7 +146,7 @@ pub struct VcrRequest {
     method: Method,
     url: Url,
     headers: HashMap<String, Vec<String>>,
-    body: Vec<u8>,
+    body: Body,
 }
 
 impl VcrRequest {
@@ -147,9 +165,11 @@ impl VcrRequest {
             headers
         };
 
-        let body = req.take_body().into_bytes().await?;
+        let orig_body = req.take_body().into_bytes().await?;
+        let body = Body::from(orig_body.as_slice());
+
         // We have to replace the body in our source after the copy.
-        req.set_body(body.as_slice());
+        req.set_body(orig_body.as_slice());
 
         Ok(Self {
             method: req.method(),
@@ -167,7 +187,7 @@ pub struct VcrResponse {
     headers: HashMap<String, Vec<String>>,
     // We may want to use the surf::Body type; for large bodies we could stream
     // from the file instead of storing it in memory.
-    body: Vec<u8>,
+    body: Body,
 }
 
 impl VcrResponse {
@@ -187,9 +207,11 @@ impl VcrResponse {
             headers
         };
 
-        let body = resp.body_bytes().await?;
+        let orig_body = resp.body_bytes().await?;
+        let body = Body::from(orig_body.as_slice());
+
         // We have to replace the body in our source after the copy.
-        resp.set_body(body.as_slice());
+        resp.set_body(orig_body.as_slice());
 
         Ok(Self {
             status: resp.status(),
@@ -213,7 +235,10 @@ impl From<&VcrResponse> for Response {
             }
         }
 
-        response.set_body(resp.body.as_slice());
+        match &resp.body {
+            Body::Bytes(b) => response.set_body(b.as_slice()),
+            Body::Str(s) => response.set_body(s.as_str()),
+        }
 
         Response::from(response)
     }
