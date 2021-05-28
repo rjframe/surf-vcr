@@ -136,12 +136,12 @@ impl VcrRequest {
         let headers = {
             let mut headers = HashMap::new();
 
-            for hdr in req.header_names() {
-                let values = req.header(hdr).iter()
+            for header in req.header_names() {
+                let values = req.header(header).iter()
                     .map(|v| v.to_string())
                     .collect::<Vec<String>>();
 
-                headers.insert(hdr.to_string(), values);
+                headers.insert(header.to_string(), values);
             }
 
             headers
