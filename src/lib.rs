@@ -56,7 +56,12 @@ impl Middleware for VcrMiddleware {
                     .append(true)
                     .open(&self.file).await?;
 
-                let doc = serde_yaml::to_string(&(request, response))?;
+                let doc = serde_yaml::to_string(
+                    &(
+                        SerdeWrapper::Request(request),
+                        SerdeWrapper::Response(response)
+                    )
+                )?;
 
                 // Each record is a new YAML document.
                 file.write_all(doc.as_bytes()).await?;
@@ -93,8 +98,18 @@ impl VcrMiddleware {
 
             for replay in replays.split("\n---\n") {
                 let (request, response) = serde_yaml::from_str(replay)?;
-                requests.push(request);
-                responses.push(response);
+
+                let req = match request {
+                    SerdeWrapper::Request(r) => r,
+                    _ => panic!(),
+                };
+                let resp = match response {
+                    SerdeWrapper::Response(r) => r,
+                    _ => panic!(),
+                };
+
+                requests.push(req);
+                responses.push(resp);
             }
         }
 
@@ -202,6 +217,14 @@ impl From<&VcrResponse> for Response {
 
         Response::from(response)
     }
+}
+
+// serde only supports externally-tagged enums, but I want to tag the structs.
+// See https://github.com/serde-rs/serde/issues/2007
+#[derive(Debug, Deserialize, Serialize)]
+enum SerdeWrapper {
+    Request(VcrRequest),
+    Response(VcrResponse),
 }
 
 #[derive(Debug)]
