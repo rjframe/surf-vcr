@@ -59,9 +59,7 @@ impl Middleware for VcrMiddleware {
                 let doc = serde_yaml::to_string(&(request, response))?;
 
                 // Each record is a new YAML document.
-                file.write_all(b"---\n").await?;
                 file.write_all(doc.as_bytes()).await?;
-                file.write_all(b"\n").await?;
 
                 res
             },
