@@ -5,6 +5,7 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
+    sync::RwLock,
     fmt,
     io,
 };
@@ -25,6 +26,16 @@ use surf::{
     Url,
 };
 
+use once_cell::sync::OnceCell;
+
+
+// For now we store requests and responses for ReplayMode as a pair of vecs;
+// we'll iterate the requests until we find the one we want, and return the
+// corresponding response. TODO: A multimap with the request URL or
+// (method, URL) as the key makes more sense for large recordings.
+static CASSETTES:
+    OnceCell<RwLock<HashMap<PathBuf, (Vec<VcrRequest>, Vec<VcrResponse>)>>>
+        = OnceCell::new();
 
 /// A record-replay middleware for surf.
 ///
@@ -35,13 +46,6 @@ use surf::{
 pub struct VcrMiddleware {
     mode: VcrMode,
     file: PathBuf,
-
-    // For now we store requests and responses for ReplayMode as a pair of vecs;
-    // we'll iterate the requests until we find the one we want, and return the
-    // corresponding response. TODO: A multimap with the request URL or
-    // (method, URL) as the key makes more sense.
-    requests: Vec<VcrRequest>,
-    responses: Vec<VcrResponse>,
 }
 
 #[surf::utils::async_trait]
@@ -73,14 +77,14 @@ impl Middleware for VcrMiddleware {
                 res
             },
             VcrMode::Replay => {
-                let pos = self.requests.iter().position(|x| x == &request);
+                let cassettes = CASSETTES.get().unwrap().read().unwrap();
 
-                if pos.is_none() {
-                    // Return error? panic?
-                    todo!()
+                let (requests, responses) = &cassettes[&self.file];
+
+                match requests.iter().position(|x| x == &request) {
+                    Some(pos) => Response::from(&responses[pos]),
+                    None => todo!() // Return error? Panic?
                 }
-
-                Response::from(&self.responses[pos.unwrap()])
             }
         };
 
@@ -93,31 +97,43 @@ impl VcrMiddleware {
         where P: Into<PathBuf>,
     {
         let recording = recording.into();
-        let mut requests = vec![];
-        let mut responses = vec![];
 
         if mode == VcrMode::Replay {
-            // TODO: Read in chunks.
-            let replays = fs::read_to_string(&recording).await?;
+            // Ignore error; we only initialize once.
+            let _ = CASSETTES.set(RwLock::new(HashMap::new()));
 
-            for replay in replays.split("\n---\n") {
-                let (request, response) = serde_yaml::from_str(replay)?;
+            let mut cassettes = CASSETTES.get().unwrap().write().unwrap();
 
-                let req = match request {
-                    SerdeWrapper::Request(r) => r,
-                    _ => panic!(),
-                };
-                let resp = match response {
-                    SerdeWrapper::Response(r) => r,
-                    _ => panic!(),
-                };
+            if ! cassettes.contains_key(&recording) {
+                let mut requests = vec![];
+                let mut responses = vec![];
 
-                requests.push(req);
-                responses.push(resp);
+                let replays = fs::read_to_string(&recording).await?;
+
+                for replay in replays.split("\n---\n") {
+                    let (request, response) = serde_yaml::from_str(replay)?;
+
+                    // TODO: Return errors; the panics can only occur after
+                    // manually incorrectly-editing a file, but will poison the
+                    // RwLock causing subsequent tests to fail.
+                    let req = match request {
+                        SerdeWrapper::Request(r) => r,
+                        _ => panic!(),
+                    };
+                    let resp = match response {
+                        SerdeWrapper::Response(r) => r,
+                        _ => panic!(),
+                    };
+
+                    requests.push(req);
+                    responses.push(resp);
+                }
+
+                cassettes.insert(recording.clone(), (requests, responses));
             }
         }
 
-        Ok(Self { mode, file: recording, requests, responses })
+        Ok(Self { mode, file: recording })
     }
 }
 
