@@ -23,7 +23,7 @@ use surf_vcr::{VcrMiddleware, VcrMode};
 fn main() {
     let args: Vec<String> = env::args().collect();
 
-    if args.len() < 2 && (args[1] != "record" || args[1] != "play") {
+    if args.len() < 2 || (args[1] != "record" && args[1] != "play") {
         println!("Usage: {} record|play [URL]", args[0]);
         return;
     }
