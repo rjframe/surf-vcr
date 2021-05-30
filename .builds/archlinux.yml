@@ -1,0 +1,29 @@
+image: archlinux
+packages:
+  - openssl
+  - pkgconf
+sources:
+  - https://git.sr.ht/~rjframe/surf-vcr
+tasks:
+  - install-rustup: |
+      curl https://sh.rustup.rs -sSf | sh -s -- --default-toolchain none -y
+  - install-stable: |
+      $HOME/.cargo/bin/rustup toolchain install stable --allow-downgrade --profile minimal --component clippy
+  - build-stable: |
+      cd $HOME/surf-vcr
+      $HOME/.cargo/bin/cargo +stable build
+  - test-stable : |
+      cd $HOME/surf-vcr
+      $HOME/.cargo/bin/cargo +stable test
+  - clippy-stable: |
+      cd $HOME/surf-vcr
+      $HOME/.cargo/bin/cargo +stable clippy
+  - install-nightly: |
+      cd $HOME/surf-vcr
+      $HOME/.cargo/bin/rustup toolchain install nightly --allow-downgrade --profile minimal
+  - build-nightly: |
+      cd $HOME/surf-vcr
+      $HOME/.cargo/bin/cargo +nightly build
+  - test-nightly : |
+      cd $HOME/surf-vcr
+      $HOME/.cargo/bin/cargo +nightly test
