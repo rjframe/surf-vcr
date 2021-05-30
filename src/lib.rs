@@ -43,11 +43,26 @@ static CASSETTES:
 static RECORDERS: OnceCell<RwLock<HashMap<PathBuf, Mutex::<()>>>>
     = OnceCell::new();
 
-/// A record-replay middleware for surf.
+/// Record and playback HTTP sessions.
 ///
 /// This middleware must be registered to the client after any other middleware
 /// that modifies the HTTP request, or those modifications will not be recorded
 /// and replayed.
+///
+/// ```ignore
+/// let vcr = VcrMiddleware::new(VcrMode::Replay, "session-recording.yml")
+///     .await?;
+///
+/// let mut client = surf::Client::new()
+///     .with(some_other_middleware)
+///     .with(vcr);
+///
+/// // And then make your requests:
+/// let req = surf::get("https://example.com")
+///     .insert_header("X-my-header", "stuff");
+/// client.send(req).await?;
+/// ```
+///
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VcrMiddleware {
     mode: VcrMode,
@@ -169,6 +184,8 @@ impl From<&[u8]> for Body {
     }
 }
 
+/// Determines whether the middleware should record HTTP sessions or inject
+/// pre-recorded responses into the session.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum VcrMode {
     Record,
