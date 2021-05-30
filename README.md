@@ -17,7 +17,7 @@ HTTP client that records your sessions to replay them later.
 ## Introduction
 
 Surf-vcr records HTTP sessions to a YAML file so you can review and modify the
-sessions manually. An example session might look like:
+sessions manually. An example recorded session file might look like:
 
 ```yml
 ---
@@ -26,18 +26,18 @@ sessions manually. An example session might look like:
     url: "http://localhost:8000/v1/auth/logon"
     headers:
       content-type:
-        - "[\"text/plain;charset=utf-8\"]"
+        - text/plain;charset=utf-8
     body: name=Favorite Person&passwd=favorite
 - Response:
     status: 200
     version: ~
     headers:
       content-type:
-        - "[\"text/plain;charset=utf-8\"]"
+        - text/plain;charset=utf-8
       date:
-        - "[\"Fri, 28 May 2021 00:45:04 GMT\"]"
+        - "Fri, 28 May 2021 00:45:04 GMT"
       content-length:
-        - "[\"28\"]"
+        - 28
     body: TWRoSDA4S3ZnZzNRaGtZbmVxS1Q=
 ---
 - Request:
@@ -45,39 +45,39 @@ sessions manually. An example session might look like:
     url: "http://localhost:8000/v1/view_something"
     headers:
       authorization:
-        - "[\"Bearer TWRoSDA4S3ZnZzNRaGtZbmVxS1Q=\"]"
+        - Bearer TWRoSDA4S3ZnZzNRaGtZbmVxS1Q=
       content-type:
-        - "[\"application/json\"]"
-    body: "\"Some body\""
+        - application/json
+    body: Some body
 - Response:
     status: 200
     version: ~
     headers:
       content-length:
-        - "[\"11\"]"
+        - 11
       date:
-        - "[\"Fri, 28 May 2021 00:45:06 GMT\"]"
+        - "Fri, 28 May 2021 00:45:06 GMT"
       content-type:
-        - "[\"application/json\"]"
-    body: "[something]"
+        - application/json
+    body: [something]
 ---
 - Request:
     method: GET
     url: "http://localhost:8000/v1/auth/logoff"
     headers:
       authorization:
-        - "[\"Bearer NGpRTHREWDUyV0hGTEZEelpSY2U=\"]"
+        - Bearer NGpRTHREWDUyV0hGTEZEelpSY2U=
     body: ""
 - Response:
     status: 200
     version: ~
     headers:
       content-type:
-        - "[\"application/octet-stream\"]"
+        - application/octet-stream
       content-length:
-        - "[\"0\"]"
+        - 0
       date:
-        - "[\"Fri, 28 May 2021 00:44:58 GMT\"]"
+        - "Fri, 28 May 2021 00:44:58 GMT"
     body: ""
 ```
 

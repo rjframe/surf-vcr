@@ -190,7 +190,11 @@ impl VcrRequest {
 
             for header in req.header_names() {
                 let values = req.header(header).iter()
-                    .map(|v| v.to_string())
+                    // We use as_str() before to_string() to prevent the
+                    // unnecessary addition of escape characters, which double
+                    // up if we round-trip the request and response
+                    // de/serializations.
+                    .map(|v| v.as_str().to_string())
                     .collect::<Vec<String>>();
 
                 headers.insert(header.to_string(), values);
@@ -232,7 +236,11 @@ impl VcrResponse {
 
             for hdr in resp.header_names() {
                 let values = resp.header(hdr).iter()
-                    .map(|v| v.to_string())
+                    // We use as_str() before to_string() to prevent the
+                    // unnecessary addition of escape characters, which double
+                    // up if we round-trip the request and response
+                    // de/serializations.
+                    .map(|v| v.as_str().to_string())
                     .collect::<Vec<String>>();
 
                 headers.insert(hdr.to_string(), values);
