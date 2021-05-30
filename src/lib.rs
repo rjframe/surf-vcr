@@ -318,3 +318,147 @@ impl From<io::Error> for VcrError {
 impl From<serde_yaml::Error> for VcrError {
     fn from(e: serde_yaml::Error) -> Self { Self::Parse(e) }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[async_std::test]
+    async fn read_recording_from_disk() -> Result<(), VcrError> {
+        let vcr = VcrMiddleware::new(
+            VcrMode::Replay,
+            "test-sessions/simple.yml"
+        ).await?;
+
+        let mut req_headers = HashMap::new();
+        req_headers.insert(
+            "X-some-header".to_owned(),
+            vec!["hello".to_owned()]
+        );
+
+        let req = VcrRequest {
+            method: Method::Get,
+            url: Url::parse("https://example.com").unwrap(),
+            headers: req_headers,
+            body: Body::Str("My Request".to_owned()),
+        };
+
+        let mut res_headers = HashMap::new();
+        res_headers.insert(
+            "X-some-header".to_owned(),
+            vec!["goodbye".to_owned()]
+        );
+
+        let res = VcrResponse {
+            status: StatusCode::Ok,
+            version: None,
+            headers: res_headers,
+            body: Body::Str("A Response".to_owned()),
+        };
+
+        let cassette = CASSETTES.get().unwrap().read().await;
+        let (request, response) = &cassette[&vcr.file];
+
+        assert_eq!(req, request[0]);
+        assert_eq!(res, response[0]);
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn replay_recorded_communications() -> Result<(), VcrError> {
+        let vcr = VcrMiddleware::new(
+            VcrMode::Replay,
+            "test-sessions/simple.yml"
+        ).await?;
+
+        let client = surf::Client::new().with(vcr);
+
+        let req = surf::get("https://example.com")
+            .header("X-some-header", "another hello")
+            .build();
+
+        let mut res = client.send(req).await.unwrap();
+
+        let mut res_headers = HashMap::new();
+        res_headers.insert(
+            "x-some-header".to_owned(),
+            vec!["another goodbye".to_owned()]
+        );
+        res_headers.insert(
+            "content-type".to_owned(),
+            vec!["text/plain;charset=utf-8".to_owned()]
+        );
+        res_headers.insert(
+            "date".to_owned(),
+            vec!["Fri, 28 May 2021 00:44:58 GMT".to_owned()]
+        );
+
+        let expected = VcrResponse {
+            status: StatusCode::Ok,
+            version: None,
+            headers: res_headers,
+            body: Body::Str("A Response".to_owned()),
+        };
+
+        assert_eq!(
+            VcrResponse::try_from_response(&mut res).await.unwrap(),
+            expected
+        );
+
+        Ok(())
+    }
+
+    #[async_std::test]
+    async fn record_communication_in_write_mode() -> Result<(), VcrError> {
+        // To avoid the need for a running server, we're actually using two
+        // instances of VcrMiddleware - the one under test, and another to
+        // replay a session to be recorded.
+
+        // Ignore a non-existent file; assume deletion succeeds.
+        let _ = async_std::fs::remove_file("test-sessions/record-test.yml")
+            .await;
+
+        let outer = VcrMiddleware::new(
+            VcrMode::Replay,
+            "test-sessions/simple.yml"
+        ).await?;
+
+        let vcr = VcrMiddleware::new(
+            VcrMode::Record,
+            "test-sessions/record-test.yml"
+        ).await?;
+
+        let client = surf::Client::new()
+            .with(vcr)
+            .with(outer);
+
+        let req = surf::get("https://example.com")
+            .header("X-some-header", "another hello")
+            .header("Content-Type", "application/octet-stream")
+            .build();
+
+        let mut expected_res = client.send(req).await.unwrap();
+
+        // Now we'll create a client to replay what we just did.
+        let client = surf::Client::new()
+            .with(VcrMiddleware::new(
+                VcrMode::Replay,
+                "test-sessions/record-test.yml"
+            ).await?);
+
+        let req = surf::get("https://example.com")
+            .header("X-some-header", "another hello")
+            .header("Content-Type", "application/octet-stream")
+            .build();
+
+        let mut res = client.send(req).await.unwrap();
+
+        assert_eq!(
+            VcrResponse::try_from_response(&mut res).await.unwrap(),
+            VcrResponse::try_from_response(&mut expected_res).await.unwrap()
+        );
+
+        Ok(())
+    }
+}
