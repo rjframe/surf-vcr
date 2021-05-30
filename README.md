@@ -91,14 +91,19 @@ even create) the sessions manually. A simple recording might look like:
 
 ### Install
 
-Surf-vcr is not yet on crates.io, so clone the repository locally and add a
-path-based dependency in Cargo.toml. You will typically be using it as a
-dev-dependency for your tests:
+You'll typically be using surf-vcr as a development dependency, so add it as
+such via Cargo:
+
+```sh
+cargo add -D surf-vcr
+```
+
+Or add it to your `Cargo.toml` file manually:
 
 ```toml
 [dev-dependencies]
 
-surf-vcr = { path = "../surf-vcr" }
+surf-vcr = "0.1.0"
 ```
 
 

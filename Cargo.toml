@@ -2,17 +2,30 @@
 name = "surf-vcr"
 version = "0.1.0"
 edition = "2018"
+authors = ["Ryan Frame <code@ryanjframe.com>"]
+license = "MPL-2.0"
+
+description = "Record and replay HTTP sessions for testing surf clients"
+categories = ["development-tools::testing", "web-programming::http-client"]
+keywords = ["http", "client", "surf", "middleware", "test"]
+
+repository = "https://git.sr.ht/~rjframe/surf-vcr"
+readme = "README.md"
+
+exclude = [".builds/*"]
 
 [dependencies]
 # TODO: Determine what version range we can support.
-surf = { version = "2.2", default-features = false, features = ["curl-client"] }
+surf = { version = "2.2.0", default-features = false, features = [
+    "curl-client"
+] }
 
-async-std = { version = "1.9", default-features = false, features = ["std"] }
-serde = "1.0"
-serde_yaml = "0.8"
+async-std = { version = "1.9.0", default-features = false, features = ["std"] }
+serde = "1.0.126"
+serde_yaml = "0.8.17"
 once_cell = "1.7.2"
 
 [dev-dependencies]
-async-std = { version = "1.9", default-features = false, features = [
+async-std = { version = "1.9.0", default-features = false, features = [
     "std", "attributes"
 ] }
