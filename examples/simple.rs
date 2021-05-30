@@ -16,8 +16,9 @@
 use std::env;
 
 use async_std::task;
+
 use surf;
-use surf_vcr::{VcrMiddleware, VcrMode };
+use surf_vcr::{VcrMiddleware, VcrMode};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -53,5 +54,7 @@ fn main() {
             let text = res.body_string().await.unwrap();
             assert!(text.contains("illustrative examples"));
         }
+
+        println!("Status: {}", res.status());
     });
 }
