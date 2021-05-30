@@ -11,7 +11,7 @@ use std::{
 
 use async_std::{
     prelude::*,
-    sync::RwLock,
+    sync::{RwLock, Mutex},
     fs,
 };
 
@@ -37,6 +37,12 @@ static CASSETTES:
     OnceCell<RwLock<HashMap<PathBuf, (Vec<VcrRequest>, Vec<VcrResponse>)>>>
         = OnceCell::new();
 
+// We need to guard our file writes; A PathBuf and Mutex<()> pair allows us to
+// search for the needed mutex, which we wouldn't have if we used a Vec or
+// HashSet of Mutex<PathBuf>.
+static RECORDERS: OnceCell<RwLock<HashMap<PathBuf, Mutex::<()>>>>
+    = OnceCell::new();
+
 /// A record-replay middleware for surf.
 ///
 /// This middleware must be registered to the client after any other middleware
@@ -59,11 +65,6 @@ impl Middleware for VcrMiddleware {
                 let mut res = next.run(req, client).await?;
                 let response = VcrResponse::try_from_response(&mut res).await?;
 
-                let mut file = fs::OpenOptions::new()
-                    .create(true)
-                    .append(true)
-                    .open(&self.file).await?;
-
                 let doc = serde_yaml::to_string(
                     &(
                         SerdeWrapper::Request(request),
@@ -71,8 +72,18 @@ impl Middleware for VcrMiddleware {
                     )
                 )?;
 
+                let recorders = RECORDERS.get().unwrap().read().await;
+                let m = &recorders[&self.file];
+                let lock = m.lock().await;
+
+                let mut file = fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(&self.file).await?;
+
                 // Each record is a new YAML document.
                 file.write_all(doc.as_bytes()).await?;
+                drop(lock);
 
                 res
             },
@@ -128,6 +139,12 @@ impl VcrMiddleware {
 
                 cassettes.insert(recording.clone(), (requests, responses));
             }
+        } else { // VcrMode::Record
+            // Ignore error; we only initialize once.
+            let _ = RECORDERS.set(RwLock::new(HashMap::new()));
+
+            let mut recorders = RECORDERS.get().unwrap().write().await;
+            recorders.insert(recording.clone(), Mutex::new(()));
         }
 
         Ok(Self { mode, file: recording })
