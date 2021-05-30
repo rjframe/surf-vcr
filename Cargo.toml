@@ -5,7 +5,7 @@ edition = "2018"
 
 [dependencies]
 # TODO: Determine what version range we can support.
-surf = "2.2"
+surf = { version = "2.2", default-features = false, features = ["curl-client"] }
 
 async-std = { version = "1.9", default-features = false, features = ["std"] }
 serde = "1.0"
