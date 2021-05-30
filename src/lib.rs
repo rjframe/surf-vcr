@@ -176,7 +176,7 @@ pub enum VcrMode {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct VcrRequest {
+struct VcrRequest {
     method: Method,
     url: Url,
     headers: HashMap<String, Vec<String>>,
@@ -184,7 +184,7 @@ pub struct VcrRequest {
 }
 
 impl VcrRequest {
-    pub async fn from_request(req: &mut Request) -> surf::Result<VcrRequest> {
+    async fn from_request(req: &mut Request) -> surf::Result<VcrRequest> {
         let headers = {
             let mut headers = HashMap::new();
 
@@ -219,7 +219,7 @@ impl VcrRequest {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct VcrResponse {
+struct VcrResponse {
     status: StatusCode,
     version: Option<Version>,
     headers: HashMap<String, Vec<String>>,
@@ -229,7 +229,7 @@ pub struct VcrResponse {
 }
 
 impl VcrResponse {
-    pub async fn try_from_response(resp: &mut Response)
+    async fn try_from_response(resp: &mut Response)
     -> surf::Result<VcrResponse> {
         let headers = {
             let mut headers = HashMap::new();
