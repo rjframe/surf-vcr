@@ -1,7 +1,14 @@
-# Surf-vcr - Replay and Record HTTP sessions
+# Surf-vcr - Record and Replay HTTP sessions
 
 Surf-vcr is a testing middleware for the [Surf](https://github.com/http-rs/Surf)
-HTTP client that records your sessions to replay them later.
+HTTP client that records your HTTP sessions to provide deterministic testing of
+your HTTP clients.
+
+The high-level design is based on [VCR](https://github.com/vcr/vcr) for Ruby.
+
+Source code is available on [sr.ht](https://git.sr.ht/~rjframe/surf-vcr) and
+[Github](https://github.com/rjframe/surf-vcr). Patches may be sent via either
+service, but the CI is running on sr.ht.
 
 
 ## Table of Contents
@@ -9,15 +16,15 @@ HTTP client that records your sessions to replay them later.
 * [Introduction](#introduction)
     * [Install](#application-installation)
     * [Record](#record)
-    * [Replay](#replay)
+    * [Playback](#playback)
 * [License](#license)
 * [Contributing](#contributing)
 
 
 ## Introduction
 
-Surf-vcr records HTTP sessions to a YAML file so you can review and modify the
-sessions manually. An example recorded session file might look like:
+Surf-vcr records HTTP sessions to a YAML file so you can review and modify (or
+even create) the sessions manually. A simple recording might look like:
 
 ```yml
 ---
@@ -59,7 +66,7 @@ sessions manually. An example recorded session file might look like:
         - "Fri, 28 May 2021 00:45:06 GMT"
       content-type:
         - application/json
-    body: [something]
+    body: "[something]"
 ---
 - Request:
     method: GET
@@ -99,7 +106,9 @@ surf-vcr = { path = "../surf-vcr" }
 
 Either in your application or the relevant test, register the middleware with
 your application in `Record` mode. You will connect to a functioning server and
-record all requests and responses to a file.
+record all requests and responses to a file. You can safely record multiple HTTP
+sessions (tests) into the same file concurrently, but currently should not both
+read to and record from the same file at once.
 
 Surf-vcr must be registered **after** any other middleware that modifies the
 `Request` or `Response`; otherwise it will not see their modifications and
@@ -120,10 +129,13 @@ let req = surf::get("https://www.example.com")
 client.send(req).await?;
 ```
 
+Take a look at the [simple](examples/simple.rs) example for more.
 
-### Replay
 
-To replay the session, simply change `VcrMode::Record` to `VcrMode::Replay`:
+### Playback
+
+To replay the server's responses, simply change `VcrMode::Record` to
+`VcrMode::Replay`:
 
 ```rust
 let vcr = VcrMiddleware::new(VcrMode::Replay, "session-recording.yml").await?;
