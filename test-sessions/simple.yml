@@ -1,0 +1,55 @@
+---
+- Request:
+    method: GET
+    url: "https://example.com"
+    headers:
+      X-some-header:
+        - hello
+    body: My Request
+- Response:
+    status: 200
+    version: ~
+    headers:
+      X-some-header:
+        - goodbye
+    body: A Response
+---
+- Request:
+    method: GET
+    url: "https://example.com/"
+    headers:
+      x-some-header:
+        - another hello
+    body: ""
+- Response:
+    status: 200
+    version: ~
+    headers:
+      content-type:
+        - text/plain;charset=utf-8
+      date:
+        - "Fri, 28 May 2021 00:44:58 GMT"
+      x-some-header:
+        - another goodbye
+    body: A Response
+---
+- Request:
+    method: GET
+    url: "https://example.com/"
+    headers:
+      content-type:
+        - application/octet-stream
+      x-some-header:
+        - another hello
+    body: ""
+- Response:
+    status: 200
+    version: ~
+    headers:
+      content-type:
+        - text/plain;charset=utf-8
+      date:
+        - "Fri, 28 May 2021 00:44:58 GMT"
+      x-some-header:
+        - another goodbye
+    body: And Another Response
