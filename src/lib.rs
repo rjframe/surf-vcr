@@ -5,13 +5,13 @@
 use std::{
     collections::HashMap,
     path::PathBuf,
-    sync::RwLock,
     fmt,
     io,
 };
 
 use async_std::{
     prelude::*,
+    sync::RwLock,
     fs,
 };
 
@@ -77,7 +77,7 @@ impl Middleware for VcrMiddleware {
                 res
             },
             VcrMode::Replay => {
-                let cassettes = CASSETTES.get().unwrap().read().unwrap();
+                let cassettes = CASSETTES.get().unwrap().read().await;
 
                 let (requests, responses) = &cassettes[&self.file];
 
@@ -102,7 +102,7 @@ impl VcrMiddleware {
             // Ignore error; we only initialize once.
             let _ = CASSETTES.set(RwLock::new(HashMap::new()));
 
-            let mut cassettes = CASSETTES.get().unwrap().write().unwrap();
+            let mut cassettes = CASSETTES.get().unwrap().write().await;
 
             if ! cassettes.contains_key(&recording) {
                 let mut requests = vec![];
@@ -113,16 +113,13 @@ impl VcrMiddleware {
                 for replay in replays.split("\n---\n") {
                     let (request, response) = serde_yaml::from_str(replay)?;
 
-                    // TODO: Return errors; the panics can only occur after
-                    // manually incorrectly-editing a file, but will poison the
-                    // RwLock causing subsequent tests to fail.
                     let req = match request {
                         SerdeWrapper::Request(r) => r,
-                        _ => panic!(),
+                        _ => panic!("Invalid request"),
                     };
                     let resp = match response {
                         SerdeWrapper::Response(r) => r,
-                        _ => panic!(),
+                        _ => panic!("Invalid response"),
                     };
 
                     requests.push(req);
