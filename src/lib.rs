@@ -75,7 +75,7 @@ impl Middleware for VcrMiddleware {
     -> surf::Result<Response> {
         let request = VcrRequest::from_request(&mut req).await?;
 
-        let res = match self.mode {
+        match self.mode {
             VcrMode::Record => {
                 let mut res = next.run(req, client).await?;
                 let response = VcrResponse::try_from_response(&mut res).await?;
@@ -100,21 +100,21 @@ impl Middleware for VcrMiddleware {
                 file.write_all(doc.as_bytes()).await?;
                 drop(lock);
 
-                res
+                Ok(res)
             },
             VcrMode::Replay => {
                 let cassettes = CASSETTES.get().unwrap().read().await;
-
                 let (requests, responses) = &cassettes[&self.file];
 
                 match requests.iter().position(|x| x == &request) {
-                    Some(pos) => Response::from(&responses[pos]),
-                    None => todo!() // Return error? Panic?
+                    Some(pos) => Ok(Response::from(&responses[pos])),
+                    None => Err(surf::Error::new(
+                        StatusCode::NotFound,
+                        VcrError::Lookup(Request::from(request))
+                    )),
                 }
             }
-        };
-
-        Ok(res)
+        }
     }
 }
 
@@ -184,7 +184,7 @@ impl From<&[u8]> for Body {
     }
 }
 
-/// Determines whether the middleware should record HTTP sessions or inject
+/// Determines whether the middleware should record the HTTP session or inject
 /// pre-recorded responses into the session.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Hash)]
 pub enum VcrMode {
@@ -232,6 +232,27 @@ impl VcrRequest {
             headers,
             body,
         })
+    }
+}
+
+impl From<VcrRequest> for Request {
+    fn from(req: VcrRequest) -> Request {
+        let mut request = http::Request::new(req.method, req.url);
+
+        for name in req.headers.keys() {
+            let values = &req.headers[name];
+
+            for value in values.iter() {
+                request.append_header(name.as_str(), value);
+            }
+        }
+
+        match &req.body {
+            Body::Bytes(b) => request.set_body(b.as_slice()),
+            Body::Str(s) => request.set_body(s.as_str()),
+        }
+
+        Request::from(request)
     }
 }
 
@@ -315,6 +336,7 @@ enum SerdeWrapper {
 pub enum VcrError {
     File(io::Error),
     Parse(serde_yaml::Error),
+    Lookup(surf::Request),
 }
 
 impl std::error::Error for VcrError {}
@@ -324,6 +346,8 @@ impl fmt::Display for VcrError {
         match self {
             Self::File(e) => e.fmt(f),
             Self::Parse(e) => e.fmt(f),
+            Self::Lookup(req) =>
+                write!(f, "Request not found at {}", req.url()),
         }
     }
 }
