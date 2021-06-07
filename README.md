@@ -1,14 +1,15 @@
 # Surf-vcr - Record and Replay HTTP sessions
 
 Surf-vcr is a testing middleware for the [Surf](https://github.com/http-rs/Surf)
-HTTP client that records your HTTP sessions to provide deterministic testing of
-your HTTP clients.
+HTTP client library. Surf-vcr records your client's HTTP sessions with a server
+to later mock the server's HTTP responses, providing deterministic testing of
+your clients.
 
 The high-level design is based on [VCR](https://github.com/vcr/vcr) for Ruby.
 
-Source code is available on [sr.ht](https://git.sr.ht/~rjframe/surf-vcr) and
+Source code is available on [SourceHut](https://git.sr.ht/~rjframe/surf-vcr) and
 [Github](https://github.com/rjframe/surf-vcr). Patches may be sent via either
-service, but the CI is running on sr.ht.
+service, but the CI is running on SourceHut.
 
 
 ## Table of Contents
@@ -24,7 +25,8 @@ service, but the CI is running on sr.ht.
 ## Introduction
 
 Surf-vcr records HTTP sessions to a YAML file so you can review and modify (or
-even create) the sessions manually. A simple recording might look like:
+even create) the requests and responses manually. A simple recording might look
+like:
 
 ```yml
 ---
@@ -112,26 +114,56 @@ surf-vcr = "0.1.0"
 Either in your application or the relevant test, register the middleware with
 your application in `Record` mode. You will connect to a functioning server and
 record all requests and responses to a file. You can safely record multiple HTTP
-sessions (tests) into the same file concurrently, but currently should not both
-read to and record from the same file at once.
+sessions (tests) into the same file concurrently.
 
 Surf-vcr must be registered **after** any other middleware that modifies the
 `Request` or `Response`; otherwise it will not see their modifications and
 cannot record them.
 
+I have found it useful to use a function in my application to create the Surf
+client with my middleware, then call that function in my tests as well so I know
+my test client and application client are identical:
+
 ```rust
-use surf_vcr::{VcrMiddleware, VcrMode};
+fn create_surf_client() -> surf::Client {
+    let session = MySessionMiddleware::new();
 
-let vcr = VcrMiddleware::new(VcrMode::Record, "session-recording.yml").await?;
+    surf::Client::new()
+        .with(session)
+}
 
-let client = surf::Client::new()
-    .with(some_other_middleware)
-    .with(vcr);
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_std::task;
+    use surf_vcr::{VcrError, VcrMiddleware, VcrMode};
 
-// And then make your requests:
-let req = surf::get("https://www.example.com")
-    .insert_header("X-my-header", "stuff");
-client.send(req).await?;
+    async fn create_test_client(mode: VcrMode, cassette: &'static str)
+    -> std::result::Result<surf::Client, VcrError>
+    {
+        let client = create_surf_client()
+            .with(VcrMiddleware::new(mode, cassette).await?);
+
+        Ok(client)
+    }
+
+    #[async_std::test]
+    async fn test_example_request() {
+        let client = create_test_client(
+            mode::VcrMode::Record,
+            "sessions/my-session.yml"
+        ).await.unwrap();
+
+        let req = surf::get("https://www.example.com")
+            .insert_header("X-my-header", "stuff");
+
+        let mut res = client.send(req).await.unwrap();
+        assert_eq!(res.status(), surf::StatusCode::Ok);
+
+        let content = res.body_string().await.unwrap();
+        assert!(content.contains("illustrative examples"));
+    }
+}
 ```
 
 Take a look at the [simple](examples/simple.rs) example for more.
@@ -139,21 +171,9 @@ Take a look at the [simple](examples/simple.rs) example for more.
 
 ### Playback
 
-To replay the server's responses, simply change `VcrMode::Record` to
-`VcrMode::Replay`:
-
-```rust
-let vcr = VcrMiddleware::new(VcrMode::Replay, "session-recording.yml").await?;
-
-let mut client = surf::Client::new()
-    .with(some_other_middleware)
-    .with(vcr);
-
-// And then make your requests:
-let req = surf::get("https://example.com")
-    .insert_header("X-my-header", "stuff");
-client.send(req).await?;
-```
+To mock the server's responses simply change `VcrMode::Record` to
+`VcrMode::Replay` and re-run your tests. Surf-vcr will look up each request
+made, intercept it, and return the saved response.
 
 
 ## License
