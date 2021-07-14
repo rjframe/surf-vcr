@@ -347,7 +347,7 @@ impl fmt::Display for VcrError {
             Self::File(e) => e.fmt(f),
             Self::Parse(e) => e.fmt(f),
             Self::Lookup(req) =>
-                write!(f, "Request not found at {}", req.url()),
+                write!(f, "Request not found at {}: {:#?}", req.url(), req),
         }
     }
 }
