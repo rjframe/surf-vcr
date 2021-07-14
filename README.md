@@ -25,70 +25,8 @@ service, but the CI is running on SourceHut.
 ## Introduction
 
 Surf-vcr records HTTP sessions to a YAML file so you can review and modify (or
-even create) the requests and responses manually. A simple recording might look
-like:
-
-```yml
----
-- Request:
-    method: POST
-    url: "http://localhost:8000/v1/auth/logon"
-    headers:
-      content-type:
-        - text/plain;charset=utf-8
-    body: name=Favorite Person&passwd=favorite
-- Response:
-    status: 200
-    version: ~
-    headers:
-      content-type:
-        - text/plain;charset=utf-8
-      date:
-        - "Fri, 28 May 2021 00:45:04 GMT"
-      content-length:
-        - 28
-    body: TWRoSDA4S3ZnZzNRaGtZbmVxS1Q=
----
-- Request:
-    method: GET
-    url: "http://localhost:8000/v1/view_something"
-    headers:
-      authorization:
-        - Bearer TWRoSDA4S3ZnZzNRaGtZbmVxS1Q=
-      content-type:
-        - application/json
-    body: Some body
-- Response:
-    status: 200
-    version: ~
-    headers:
-      content-length:
-        - 11
-      date:
-        - "Fri, 28 May 2021 00:45:06 GMT"
-      content-type:
-        - application/json
-    body: "[something]"
----
-- Request:
-    method: GET
-    url: "http://localhost:8000/v1/auth/logoff"
-    headers:
-      authorization:
-        - Bearer NGpRTHREWDUyV0hGTEZEelpSY2U=
-    body: ""
-- Response:
-    status: 200
-    version: ~
-    headers:
-      content-type:
-        - application/octet-stream
-      content-length:
-        - 0
-      date:
-        - "Fri, 28 May 2021 00:44:58 GMT"
-    body: ""
-```
+even create) the requests and responses manually. You can then inject the
+pre-recorded responses into your client sessions.
 
 
 ### Install
@@ -105,7 +43,7 @@ Or add it to your `Cargo.toml` file manually:
 ```toml
 [dev-dependencies]
 
-surf-vcr = "0.1.0"
+surf-vcr = "0.1.1"
 ```
 
 
@@ -166,7 +104,8 @@ mod tests {
 }
 ```
 
-Take a look at the [simple](examples/simple.rs) example for more.
+Take a look at the [docs](https://docs.rs/surf-vcr/) or the
+[simple](examples/simple.rs) example for more.
 
 
 ### Playback

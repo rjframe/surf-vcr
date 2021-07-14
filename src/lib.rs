@@ -2,6 +2,91 @@
 // v. 2.0. If a copy of the MPL was not distributed with this file, You can
 // obtain one at https://mozilla.org/MPL/2.0/.
 
+//! Surf-vcr allows you to record communications with an HTTP server, then
+//! inject those pre-recorded responses into Surf HTTP sessions, providing you
+//! with reproducible tests.
+//!
+//! You'll typically be testing the functionality of a function that takes a
+//! Surf client as a parameter:
+//!
+//! ```ignore
+//! async fn retrieve_widget_list(client: &surf::Client) -> Result<Vec<Widgets>>
+//! {
+//!     let req = client.get("http://example.com/see-widgets").unwrap();
+//!     // ...
+//!     # Ok(vec![])
+//! }
+//! ```
+//!
+//! To ensure your tests and your application use the same configuration (other
+//! middlewares, the base URL, etc) create your client in a function; your tests
+//! can then call that function and wrap the client with the VcrMiddleware:
+//!
+//! ```ignore
+//! // Assuming we also have a middleware to manage our sessions, and another to
+//! // automatically retry 5xx responses a number of times:
+//!
+//! pub fn new_http_client(session: SessionMiddleware) -> surf::Client {
+//!     let mut client = surf::Client::new()
+//!         .with(session)
+//!         .with(RetryMiddleware::<3>);
+//!
+//!     client.set_base_url(Url::parse(SERVER_URL)
+//!         .expect("Unable to parse SERVER_URL as a URL"));
+//!
+//!     client
+//! }
+//!
+//! #[cfg(test)]
+//! pub async fn create_test_client(
+//!     mode: VcrMode,
+//!     cassette: &'static str,
+//!     session: Option<Session>,
+//! ) -> surf::Client {
+//!     let session = session.or(SessionMiddleware::default());
+//!
+//!     new_http_client(session)
+//!         .with(VcrMiddleware::new(mode, cassette).await.unwrap())
+//! }
+//! ```
+//!
+//! Now run the server and record the test:
+//!
+//! ```ignore
+//! #[async_std::test]
+//! async fn user_cannot_see_widgets_if_not_logged_on() {
+//!     let client = create_test_client(
+//!         VcrMode::Record,
+//!         "tests/sessions/session-tests.yml",
+//!         None
+//!     ).await.unwrap();
+//!
+//!     let widgets = retrieve_widget_list(&client).await;
+//!     assert!(widgets.is_err());
+//! }
+//! ```
+//!
+//! Change the mode to Replay, and you can run the test without connecting to
+//! the server. If the server's output changes in the future, you could either
+//! manually adjust the YAML file or delete it and re-record the test (if that's
+//! common, it may be convenient to have a global MODE variable, and record or
+//! replay everything together).
+//!
+//! ```ignore
+//! #[async_std::test]
+//! async fn user_cannot_see_widgets_if_not_logged_on() {
+//!     let client = create_test_client(
+//!         VcrMode::Replay,
+//!         "tests/sessions/session-tests.yml",
+//!         None
+//!     ).await.unwrap();
+//!
+//!     let widgets = retrieve_widget_list(&client).await;
+//!     assert!(widgets.is_err());
+//! }
+//! ```
+
+
 use std::{
     collections::HashMap,
     path::PathBuf,
