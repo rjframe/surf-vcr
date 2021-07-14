@@ -1,3 +1,4 @@
 /target
 /*.yml
 test-sessions/record-test.yml
+Cargo.lock
