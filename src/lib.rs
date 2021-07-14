@@ -49,9 +49,15 @@ static RECORDERS: OnceCell<RwLock<HashMap<PathBuf, Mutex::<()>>>>
 /// that modifies the HTTP request, or those modifications will not be recorded
 /// and replayed.
 ///
-/// ```ignore
-/// let vcr = VcrMiddleware::new(VcrMode::Replay, "session-recording.yml")
-///     .await?;
+/// ```
+/// # async fn runtest() -> surf::Result {
+/// use surf_vcr::{VcrMiddleware, VcrMode};
+///
+/// let vcr = VcrMiddleware::new(
+///     VcrMode::Replay,
+///     "test-sessions/session-recording.yml"
+/// ).await?;
+/// # let some_other_middleware = vcr.clone();
 ///
 /// let mut client = surf::Client::new()
 ///     .with(some_other_middleware)
@@ -59,8 +65,10 @@ static RECORDERS: OnceCell<RwLock<HashMap<PathBuf, Mutex::<()>>>>
 ///
 /// // And then make your requests:
 /// let req = surf::get("https://example.com")
-///     .insert_header("X-my-header", "stuff");
-/// client.send(req).await?;
+///     .header("X-my-header", "stuff");
+///
+/// let resp = client.send(req).await?;
+/// # Ok(resp) }
 /// ```
 ///
 #[derive(Clone, Debug, Eq, PartialEq)]
