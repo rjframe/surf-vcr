@@ -31,6 +31,7 @@ fn main() {
     let site = if args.len() == 3 { &args[2] } else { "https://example.com" };
 
     let mode = if args[1] == "record" {
+        let _ = std::fs::remove_file("simple-recording-example.yml");
         VcrMode::Record
     } else if args[1] == "play" {
         VcrMode::Replay
