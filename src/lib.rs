@@ -96,7 +96,7 @@ use std::{
 
 use async_std::{
     prelude::*,
-    sync::{RwLock, Mutex},
+    sync::RwLock,
     fs,
 };
 
@@ -118,14 +118,13 @@ use once_cell::sync::OnceCell;
 // we'll iterate the requests until we find the one we want, and return the
 // corresponding response. TODO: A multimap with the request URL or
 // (method, URL) as the key makes more sense for large recordings.
-static CASSETTES:
-    OnceCell<RwLock<HashMap<PathBuf, (Vec<VcrRequest>, Vec<VcrResponse>)>>>
-        = OnceCell::new();
+type Session = (Vec<VcrRequest>, Vec<VcrResponse>);
 
-// We need to guard our file writes; A PathBuf and Mutex<()> pair allows us to
-// search for the needed mutex, which we wouldn't have if we used a Vec or
-// HashSet of Mutex<PathBuf>.
-static RECORDERS: OnceCell<RwLock<HashMap<PathBuf, Mutex::<()>>>>
+// We need to guard our file writes; we're going to lock the data though so that
+// we can still search for the desired file. The lock is over the session, but
+// we're guarding the file path; we must obtain the lock when reading or writing
+// to the file, even if we're ignoring the session.
+static CASSETTES: OnceCell<RwLock<HashMap<PathBuf, RwLock::<Option<Session>>>>>
     = OnceCell::new();
 
 /// Record and playback HTTP sessions.
@@ -180,9 +179,8 @@ impl Middleware for VcrMiddleware {
                     )
                 )?;
 
-                let recorders = RECORDERS.get().unwrap().read().await;
-                let m = &recorders[&self.file];
-                let lock = m.lock().await;
+                let recorders = CASSETTES.get().unwrap().read().await;
+                let lock = recorders[&self.file].write().await;
 
                 let mut file = fs::OpenOptions::new()
                     .create(true)
@@ -197,7 +195,10 @@ impl Middleware for VcrMiddleware {
             },
             VcrMode::Replay => {
                 let cassettes = CASSETTES.get().unwrap().read().await;
-                let (requests, responses) = &cassettes[&self.file];
+                let sessions = &cassettes[&self.file].read().await;
+
+                let (requests, responses) = sessions.as_ref()
+                    .expect(&format!("Missing session: {:?}", self.file));
 
                 match requests.iter().position(|x| x == &request) {
                     Some(pos) => Ok(Response::from(&responses[pos])),
@@ -223,7 +224,10 @@ impl VcrMiddleware {
 
             let mut cassettes = CASSETTES.get().unwrap().write().await;
 
-            if ! cassettes.contains_key(&recording) {
+            let recording_exists = cassettes.contains_key(&recording)
+                && cassettes[&recording].read().await.is_some();
+
+            if ! recording_exists {
                 let mut requests = vec![];
                 let mut responses = vec![];
 
@@ -245,14 +249,17 @@ impl VcrMiddleware {
                     responses.push(resp);
                 }
 
-                cassettes.insert(recording.clone(), (requests, responses));
+                cassettes.insert(
+                    recording.clone(),
+                    RwLock::new(Some((requests, responses)))
+                );
             }
         } else { // VcrMode::Record
             // Ignore error; we only initialize once.
-            let _ = RECORDERS.set(RwLock::new(HashMap::new()));
+            let _ = CASSETTES.set(RwLock::new(HashMap::new()));
 
-            let mut recorders = RECORDERS.get().unwrap().write().await;
-            recorders.insert(recording.clone(), Mutex::new(()));
+            let mut recorders = CASSETTES.get().unwrap().write().await;
+            recorders.insert(recording.clone(), RwLock::new(None));
         }
 
         Ok(Self { mode, file: recording })
@@ -490,11 +497,12 @@ mod tests {
             body: Body::Str("A Response".to_owned()),
         };
 
-        let cassette = CASSETTES.get().unwrap().read().await;
-        let (request, response) = &cassette[&vcr.file];
+        let cassettes = CASSETTES.get().unwrap().read().await;
+        let sessions = &cassettes[&vcr.file].read().await;
+        let (requests, responses) = sessions.as_ref().unwrap();
 
-        assert_eq!(req, request[0]);
-        assert_eq!(res, response[0]);
+        assert_eq!(req, requests[0]);
+        assert_eq!(res, responses[0]);
 
         Ok(())
     }
@@ -549,6 +557,8 @@ mod tests {
         // instances of VcrMiddleware - the one under test, and another to
         // replay a session to be recorded.
 
+        let path = "test-sessions/record-test.yml";
+
         // Ignore a non-existent file; assume deletion succeeds.
         let _ = async_std::fs::remove_file("test-sessions/record-test.yml")
             .await;
@@ -558,10 +568,7 @@ mod tests {
             "test-sessions/simple.yml"
         ).await?;
 
-        let vcr = VcrMiddleware::new(
-            VcrMode::Record,
-            "test-sessions/record-test.yml"
-        ).await?;
+        let vcr = VcrMiddleware::new(VcrMode::Record, path).await?;
 
         let client = surf::Client::new()
             .with(vcr)
@@ -576,10 +583,7 @@ mod tests {
 
         // Now we'll create a client to replay what we just did.
         let client = surf::Client::new()
-            .with(VcrMiddleware::new(
-                VcrMode::Replay,
-                "test-sessions/record-test.yml"
-            ).await?);
+            .with(VcrMiddleware::new(VcrMode::Replay, path).await?);
 
         let req = surf::get("https://example.com")
             .header("X-some-header", "another hello")

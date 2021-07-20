@@ -51,8 +51,8 @@ surf-vcr = "0.1.1"
 
 Either in your application or the relevant test, register the middleware with
 your application in `Record` mode. You will connect to a functioning server and
-record all requests and responses to a file. You can safely record multiple HTTP
-sessions (tests) into the same file concurrently.
+record all requests and responses to a file. You can safely replay and record
+multiple HTTP sessions (tests) with the same file concurrently.
 
 Surf-vcr must be registered **after** any other middleware that modifies the
 `Request` or `Response`; otherwise it will not see their modifications and
