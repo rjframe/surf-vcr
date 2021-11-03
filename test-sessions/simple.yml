@@ -20,6 +20,8 @@
     headers:
       x-some-header:
         - another hello
+      secret-header:
+        - (secret)
     body: ""
 - Response:
     status: 200
@@ -41,6 +43,8 @@
         - application/octet-stream
       x-some-header:
         - another hello
+      session-key:
+        - 00112233445566778899AABBCCDDEEFF
     body: ""
 - Response:
     status: 200
@@ -52,4 +56,7 @@
         - "Fri, 28 May 2021 00:44:58 GMT"
       x-some-header:
         - another goodbye
+      Set-Cookie:
+        - cookie1=val1; Expires=date1
+        - cookie2=val2; Expires=date2
     body: And Another Response

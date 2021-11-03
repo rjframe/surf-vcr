@@ -127,6 +127,9 @@ type Session = (Vec<VcrRequest>, Vec<VcrResponse>);
 static CASSETTES: OnceCell<RwLock<HashMap<PathBuf, RwLock::<Option<Session>>>>>
     = OnceCell::new();
 
+pub type RequestModifier = dyn Fn(&mut VcrRequest) + Send + Sync + 'static;
+pub type ResponseModifier = dyn Fn(&mut VcrResponse) + Send + Sync + 'static;
+
 /// Record and playback HTTP sessions.
 ///
 /// This middleware must be registered to the client after any other middleware
@@ -155,22 +158,29 @@ static CASSETTES: OnceCell<RwLock<HashMap<PathBuf, RwLock::<Option<Session>>>>>
 /// # Ok(resp) }
 /// ```
 ///
-#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct VcrMiddleware {
     mode: VcrMode,
     file: PathBuf,
+    modify_request: Option<Box<RequestModifier>>,
+    modify_response: Option<Box<ResponseModifier>>,
 }
 
 #[surf::utils::async_trait]
 impl Middleware for VcrMiddleware {
     async fn handle(&self, mut req: Request, client: Client, next: Next<'_>)
     -> surf::Result<Response> {
-        let request = VcrRequest::from_request(&mut req).await?;
+        let mut request = VcrRequest::from_request(&mut req).await?;
+        if let Some(ref modifier) = self.modify_request {
+            modifier(&mut request);
+        }
 
         match self.mode {
             VcrMode::Record => {
                 let mut res = next.run(req, client).await?;
-                let response = VcrResponse::try_from_response(&mut res).await?;
+                let mut response = VcrResponse::try_from_response(&mut res).await?;
+                if let Some(ref modifier) = self.modify_response {
+                    modifier(&mut response);
+                }
 
                 let doc = serde_yaml::to_string(
                     &(
@@ -262,7 +272,19 @@ impl VcrMiddleware {
             recorders.insert(recording.clone(), RwLock::new(None));
         }
 
-        Ok(Self { mode, file: recording })
+        Ok(Self { mode, file: recording, modify_request: None, modify_response: None })
+    }
+
+    pub fn with_modify_request<F>(mut self, modifier: F) -> Self
+        where F: Fn(&mut VcrRequest) + Send + Sync + 'static {
+        self.modify_request.replace(Box::new(modifier));
+        self
+    }
+
+    pub fn with_modify_response<F>(mut self, modifier: F) -> Self
+        where F: Fn(&mut VcrResponse) + Send + Sync + 'static {
+        self.modify_response.replace(Box::new(modifier));
+        self
     }
 }
 
@@ -270,7 +292,7 @@ impl VcrMiddleware {
 // we serialize to bytes.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
-enum Body {
+pub enum Body {
     Bytes(Vec<u8>),
     Str(String),
 }
@@ -293,11 +315,11 @@ pub enum VcrMode {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct VcrRequest {
-    method: Method,
-    url: Url,
-    headers: HashMap<String, Vec<String>>,
-    body: Body,
+pub struct VcrRequest {
+    pub method: Method,
+    pub url: Url,
+    pub headers: HashMap<String, Vec<String>>,
+    pub body: Body,
 }
 
 impl VcrRequest {
@@ -357,13 +379,13 @@ impl From<VcrRequest> for Request {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-struct VcrResponse {
-    status: StatusCode,
-    version: Option<Version>,
-    headers: HashMap<String, Vec<String>>,
+pub struct VcrResponse {
+    pub status: StatusCode,
+    pub version: Option<Version>,
+    pub headers: HashMap<String, Vec<String>>,
     // We may want to use the surf::Body type; for large bodies we could stream
     // from the file instead of storing it in memory.
-    body: Body,
+    pub body: Body,
 }
 
 impl VcrResponse {
@@ -512,12 +534,16 @@ mod tests {
         let vcr = VcrMiddleware::new(
             VcrMode::Replay,
             "test-sessions/simple.yml"
-        ).await?;
+        ).await?
+            .with_modify_request(|res| {
+                *res.headers.get_mut("secret-header").unwrap() = vec![String::from("(secret)")];
+            });
 
         let client = surf::Client::new().with(vcr);
 
         let req = surf::get("https://example.com")
             .header("X-some-header", "another hello")
+            .header("secret-header", "sensitive data")
             .build();
 
         let mut res = client.send(req).await.unwrap();
@@ -563,12 +589,22 @@ mod tests {
         let _ = async_std::fs::remove_file("test-sessions/record-test.yml")
             .await;
 
+        fn hide_session_key(req: &mut VcrRequest) {
+            req.headers.entry("session-key".into()).and_modify(|val| *val = vec!["(some key)".into()]);
+        }
+
+        fn hide_cookie(res: &mut VcrResponse) {
+            res.headers.entry("Set-Cookie".into()).and_modify(|val| *val = vec!["(erased)".into()]);
+        }
+
         let outer = VcrMiddleware::new(
             VcrMode::Replay,
-            "test-sessions/simple.yml"
+            "test-sessions/simple.yml",
         ).await?;
 
-        let vcr = VcrMiddleware::new(VcrMode::Record, path).await?;
+        let vcr = VcrMiddleware::new(VcrMode::Record, path).await?
+            .with_modify_request(hide_session_key)
+            .with_modify_response(hide_cookie);
 
         let client = surf::Client::new()
             .with(vcr)
@@ -577,23 +613,27 @@ mod tests {
         let req = surf::get("https://example.com")
             .header("X-some-header", "another hello")
             .header("Content-Type", "application/octet-stream")
+            .header("session-key", "00112233445566778899AABBCCDDEEFF")
             .build();
 
         let mut expected_res = client.send(req).await.unwrap();
 
         // Now we'll create a client to replay what we just did.
         let client = surf::Client::new()
-            .with(VcrMiddleware::new(VcrMode::Replay, path).await?);
+            .with(VcrMiddleware::new(VcrMode::Replay, path).await?.with_modify_request(hide_session_key));
 
         let req = surf::get("https://example.com")
             .header("X-some-header", "another hello")
             .header("Content-Type", "application/octet-stream")
+            .header("session-key", "ffeeddccbbaa99887766554433221100")
             .build();
 
         let mut res = client.send(req).await.unwrap();
+        let mut modified_res = VcrResponse::try_from_response(&mut res).await.unwrap();
+        hide_cookie(&mut modified_res);
 
         assert_eq!(
-            VcrResponse::try_from_response(&mut res).await.unwrap(),
+            modified_res,
             VcrResponse::try_from_response(&mut expected_res).await.unwrap()
         );
 
