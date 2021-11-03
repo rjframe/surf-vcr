@@ -127,8 +127,8 @@ type Session = (Vec<VcrRequest>, Vec<VcrResponse>);
 static CASSETTES: OnceCell<RwLock<HashMap<PathBuf, RwLock::<Option<Session>>>>>
     = OnceCell::new();
 
-pub type RequestModifier = dyn Fn(&mut VcrRequest) + Send + Sync + 'static;
-pub type ResponseModifier = dyn Fn(&mut VcrResponse) + Send + Sync + 'static;
+type RequestModifier = dyn Fn(&mut VcrRequest) + Send + Sync + 'static;
+type ResponseModifier = dyn Fn(&mut VcrResponse) + Send + Sync + 'static;
 
 /// Record and playback HTTP sessions.
 ///
@@ -314,6 +314,7 @@ pub enum VcrMode {
     Replay,
 }
 
+/// Request to be recorded in cassettes.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VcrRequest {
     pub method: Method,
@@ -378,6 +379,7 @@ impl From<VcrRequest> for Request {
     }
 }
 
+/// Response to be recorded in cassettes.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VcrResponse {
     pub status: StatusCode,
