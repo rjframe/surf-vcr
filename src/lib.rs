@@ -180,7 +180,9 @@ impl Middleware for VcrMiddleware {
         match self.mode {
             VcrMode::Record => {
                 let mut res = next.run(req, client).await?;
-                let mut response = VcrResponse::try_from_response(&mut res).await?;
+                let mut response = VcrResponse::try_from_response(&mut res)
+                    .await?;
+
                 if let Some(ref modifier) = self.modify_response {
                     modifier(&mut response);
                 }
@@ -275,17 +277,24 @@ impl VcrMiddleware {
             recorders.insert(recording.clone(), RwLock::new(None));
         }
 
-        Ok(Self { mode, file: recording, modify_request: None, modify_response: None })
+        Ok(Self {
+            mode,
+            file: recording,
+            modify_request: None,
+            modify_response: None
+        })
     }
 
     pub fn with_modify_request<F>(mut self, modifier: F) -> Self
-        where F: Fn(&mut VcrRequest) + Send + Sync + 'static {
+        where F: Fn(&mut VcrRequest) + Send + Sync + 'static
+    {
         self.modify_request.replace(Box::new(modifier));
         self
     }
 
     pub fn with_modify_response<F>(mut self, modifier: F) -> Self
-        where F: Fn(&mut VcrResponse) + Send + Sync + 'static {
+        where F: Fn(&mut VcrResponse) + Send + Sync + 'static
+    {
         self.modify_response.replace(Box::new(modifier));
         self
     }
@@ -541,7 +550,8 @@ mod tests {
             "test-sessions/simple.yml"
         ).await?
             .with_modify_request(|res| {
-                *res.headers.get_mut("secret-header").unwrap() = vec![String::from("(secret)")];
+                *res.headers.get_mut("secret-header").unwrap() =
+                    vec![String::from("(secret)")];
             });
 
         let client = surf::Client::new().with(vcr);
@@ -595,11 +605,13 @@ mod tests {
             .await;
 
         fn hide_session_key(req: &mut VcrRequest) {
-            req.headers.entry("session-key".into()).and_modify(|val| *val = vec!["(some key)".into()]);
+            req.headers.entry("session-key".into())
+                .and_modify(|val| *val = vec!["(some key)".into()]);
         }
 
         fn hide_cookie(res: &mut VcrResponse) {
-            res.headers.entry("Set-Cookie".into()).and_modify(|val| *val = vec!["(erased)".into()]);
+            res.headers.entry("Set-Cookie".into())
+                .and_modify(|val| *val = vec!["(erased)".into()]);
         }
 
         let outer = VcrMiddleware::new(
