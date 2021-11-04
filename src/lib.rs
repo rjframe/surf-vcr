@@ -144,7 +144,10 @@ type ResponseModifier = dyn Fn(&mut VcrResponse) + Send + Sync + 'static;
 ///     VcrMode::Replay,
 ///     "test-sessions/session-recording.yml"
 /// ).await?;
-/// # let some_other_middleware = vcr.clone();
+/// # let some_other_middleware = VcrMiddleware::new(
+/// #     VcrMode::Replay,
+/// #     "test-sessions/session-recording.yml"
+/// # ).await?;
 ///
 /// let mut client = surf::Client::new()
 ///     .with(some_other_middleware)
