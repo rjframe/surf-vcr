@@ -42,8 +42,7 @@ Or add it to your `Cargo.toml` file manually:
 
 ```toml
 [dev-dependencies]
-
-surf-vcr = "0.1.1"
+surf-vcr = "0.2.0"
 ```
 
 
@@ -117,19 +116,18 @@ made, intercept it, and return the saved response.
 
 ### Modify Recorded Content
 
-It is possible to modify data before writing to your cassette files. This is useful while working with sensitive or dynamic data.
+You can modify data before writing to your cassette files. This is useful while
+working with sensitive or dynamic data.
 
 ```rust
 VcrMiddleware::new(VcrMode::Record, path).await?
     .with_modify_request(|req| {
-        req
-            .headers
+        req.headers
             .entry("session-key".into())
             .and_modify(|val| *val = vec!["...(erased)...".into()]);
     })
     .with_modify_response(|res| {
-        res
-            .headers
+        res.headers
             .entry("Set-Cookie".into())
             .and_modify(|val| *val = vec!["...(erased)...".into()]);
     });

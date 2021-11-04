@@ -85,6 +85,23 @@
 //!     assert!(widgets.is_err());
 //! }
 //! ```
+//!
+//! You can also hide sensitive information before saving the data to your
+//! cassettes:
+//!
+//! ```ignore
+//! VcrMiddleware::new(VcrMode::Record, path).await?
+//!     .with_modify_request(|req| {
+//!         req.headers
+//!             .entry("session-key".into())
+//!             .and_modify(|val| *val = vec!["...(erased)...".into()]);
+//!     })
+//!     .with_modify_response(|res| {
+//!         res.headers
+//!             .entry("Set-Cookie".into())
+//!             .and_modify(|val| *val = vec!["...(erased)...".into()]);
+//!     });
+//! ```
 
 
 use std::{
@@ -285,6 +302,7 @@ impl VcrMiddleware {
         })
     }
 
+    /// Register a modifier function to alter requests before saving to disk.
     pub fn with_modify_request<F>(mut self, modifier: F) -> Self
         where F: Fn(&mut VcrRequest) + Send + Sync + 'static
     {
@@ -292,6 +310,7 @@ impl VcrMiddleware {
         self
     }
 
+    /// Register a modifier function to alter responses before saving to disk.
     pub fn with_modify_response<F>(mut self, modifier: F) -> Self
         where F: Fn(&mut VcrResponse) + Send + Sync + 'static
     {
@@ -327,6 +346,9 @@ pub enum VcrMode {
 }
 
 /// Request to be recorded in cassettes.
+///
+/// You are unlikely to need to work with this directly except via
+/// [VcrMiddleware::with_modify_request].
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VcrRequest {
     pub method: Method,
@@ -392,6 +414,9 @@ impl From<VcrRequest> for Request {
 }
 
 /// Response to be recorded in cassettes.
+///
+/// You are unlikely to need to work with this directly except via
+/// [VcrMiddleware::with_modify_response].
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct VcrResponse {
     pub status: StatusCode,
