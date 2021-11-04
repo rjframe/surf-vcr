@@ -115,6 +115,27 @@ To mock the server's responses simply change `VcrMode::Record` to
 made, intercept it, and return the saved response.
 
 
+### Modify Recorded Content
+
+It is possible to modify data before writing to your cassette files. This is useful while working with sensitive or dynamic data.
+
+```rust
+VcrMiddleware::new(VcrMode::Record, path).await?
+    .with_modify_request(|req| {
+        req
+            .headers
+            .entry("session-key".into())
+            .and_modify(|val| *val = vec!["...(erased)...".into()]);
+    })
+    .with_modify_response(|res| {
+        res
+            .headers
+            .entry("Set-Cookie".into())
+            .and_modify(|val| *val = vec!["...(erased)...".into()]);
+    });
+```
+
+
 ## License
 
 All source code is licensed under the terms of the
