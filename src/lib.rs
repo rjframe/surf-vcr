@@ -623,24 +623,27 @@ mod tests {
 
         let mut expected_res = client.send(req).await.unwrap();
 
+
         // Now we'll create a client to replay what we just did.
         let client = surf::Client::new()
-            .with(VcrMiddleware::new(VcrMode::Replay, path).await?.with_modify_request(hide_session_key));
+            .with(VcrMiddleware::new(VcrMode::Replay, path).await?);
 
         let req = surf::get("https://example.com")
             .header("X-some-header", "another hello")
             .header("Content-Type", "application/octet-stream")
-            .header("session-key", "ffeeddccbbaa99887766554433221100")
+            .header("session-key", "(some key)")
             .build();
 
         let mut res = client.send(req).await.unwrap();
-        let mut modified_res = VcrResponse::try_from_response(&mut res).await.unwrap();
-        hide_cookie(&mut modified_res);
+        let res = VcrResponse::try_from_response(&mut res).await.unwrap();
 
         assert_eq!(
-            modified_res,
+            res,
             VcrResponse::try_from_response(&mut expected_res).await.unwrap()
         );
+
+        let cookies = &res.headers["set-cookie"];
+        assert!(! cookies.contains(&"cookie2=val2; Expires=date2".into()));
 
         Ok(())
     }
